@@ -167,8 +167,10 @@ function reportHtml(r) {
   html += row('Other', pick(r, 'other precip'));
   html += '</table>';
   if (damage) html += '<p style="margin:6px 0"><b>Damage:</b> ' + esc(damage) + '</p>';
-  String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) { html += '<img src="' + esc(u) + '">'; });
-  return html;
+  String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) {
+    var big = u.replace(/&sz=w\d+/, '&sz=w2000');
+    html += '<a href="' + esc(big) + '" target="_blank"><img src="' + esc(u) + '"></a>';
+  });  return html;
 }
 
 function shortLabel(r) {
@@ -203,7 +205,7 @@ function makePopup(items) {
       wrap.querySelector('.pick').onchange = function () { idx = parseInt(this.value, 10); render(); };
     }
     popup.update();
-  }
+    wrap.querySelectorAll('img').forEach(function (im) { im.onload = function () { popup.update(); }; });  }
   render();
   return popup;
 }
