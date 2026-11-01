@@ -8,6 +8,7 @@
   <style>
     html, body, #map { height: 100%; margin: 0; }
     .pop img { width: 100%; margin-top: 6px; border-radius: 4px; }
+    .pop td { padding: 1px 8px 1px 0; vertical-align: top; }
     #note { position: absolute; z-index: 1000; top: 10px; left: 50px; background: #fff;
             padding: 6px 10px; border-radius: 4px; font: 14px sans-serif; }
   </style>
@@ -31,6 +32,19 @@ function esc(s) {
   });
 }
 
+// Finds a value by a keyword in the column header, so small typos in headers don't break it
+function pick(r, word) {
+  for (var k in r) {
+    if (k.toLowerCase().indexOf(word) !== -1) return r[k];
+  }
+  return '';
+}
+
+function row(label, val, always) {
+  if (!val && !always) return '';
+  return '<tr><td>' + label + '</td><td><b>' + (val ? esc(val) : 'None') + '</b></td></tr>';
+}
+
 if (API.indexOf('PASTE_') === 0) {
   note.textContent = 'The web app URL has not been added to this file yet.';
 } else {
@@ -40,23 +54,38 @@ if (API.indexOf('PASTE_') === 0) {
       note.textContent = reports.length + ' report(s) loaded';
       var points = [];
       reports.forEach(function (r) {
-        var rain  = r['Rainfall Amount (in inches)'];
-        var snow  = r['Snowfall amount (in inches or feet)'];
-        var hail  = r['Hailstone Size (in inches)'];
-        var other = r['Any other precipitation types'];
-        var wind  = r['Wind speed and direction (in mph or knots)'];
+        var type    = pick(r, 'weather report or');
+        var date    = pick(r, 'current date');
+        var time    = pick(r, 'current time');
+        var place   = pick(r, 'location');
+        var story   = pick(r, 'situation');
+        var temp    = pick(r, 'temperature');
+        var humid   = pick(r, 'humidity');
+        var press   = pick(r, 'pressure');
+        var rain    = pick(r, 'rainfall');
+        var snow    = pick(r, 'snowfall');
+        var hail    = pick(r, 'hail');
+        var wind    = pick(r, 'sustained');
+        var gust    = pick(r, 'gust');
+        var other   = pick(r, 'other precip');
+        var damage  = pick(r, 'damage');
 
-        var html = '<div class="pop"><b>' + esc(r['Is this a weather report or a morningly check in?']) + '</b>';
-        html += '<br>' + esc(r['Current date']) + ' ' + esc(r['Current time']);
-        html += '<br><i>' + esc(r['Please State the Location of this Event.']) + '</i>';
-        if (r['Please decribe the current situation.']) html += '<p>' + esc(r['Please decribe the current situation.']) + '</p>';
+        var html = '<div class="pop"><b>' + esc(type) + '</b>';
+        html += '<br>' + esc(date) + ' ' + esc(time);
+        html += '<br><i>' + esc(place) + '</i>';
+        if (story) html += '<p style="margin:6px 0">' + esc(story) + '</p>';
         html += '<table style="width:100%;border-collapse:collapse;margin-top:6px">';
-        html += '<tr><td>Rainfall</td><td><b>' + (rain ? esc(rain) + ' in' : 'None') + '</b></td></tr>';
-        html += '<tr><td>Snowfall</td><td><b>' + (snow ? esc(snow) : 'None') + '</b></td></tr>';
-        html += '<tr><td>Hail size</td><td><b>' + (hail ? esc(hail) + ' in' : 'None') + '</b></td></tr>';
-        html += '<tr><td>Wind</td><td><b>' + (wind ? esc(wind) : 'None') + '</b></td></tr>';
-        html += '<tr><td>Other</td><td><b>' + (other ? esc(other) : 'None') + '</b></td></tr>';
+        html += row('Temperature', temp);
+        html += row('Humidity / dew point', humid);
+        html += row('Pressure', press);
+        html += row('Rainfall', rain ? rain + ' in' : '', true);
+        html += row('Snowfall', snow, true);
+        html += row('Hail size', hail ? hail + ' in' : '', true);
+        html += row('Sustained wind', wind);
+        html += row('Wind gusts', gust);
+        html += row('Other', other);
         html += '</table>';
+        if (damage) html += '<p style="margin:6px 0"><b>Damage:</b> ' + esc(damage) + '</p>';
         String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) {
           html += '<img src="' + esc(u) + '">';
         });
@@ -67,12 +96,13 @@ if (API.indexOf('PASTE_') === 0) {
         if (snow) bits.push('Snow ' + esc(snow));
         if (hail) bits.push('Hail ' + esc(hail) + ' in');
         if (wind) bits.push('Wind ' + esc(wind));
-        var label = bits.length ? bits.join(' · ') : esc(r['Please State the Location of this Event.']);
+        if (gust) bits.push('Gusts ' + esc(gust));
+        var label = bits.length ? bits.join(' · ') : esc(place);
 
         var pt = [parseFloat(r.Lat), parseFloat(r.Lng)];
         points.push(pt);
         L.marker(pt).addTo(map)
-          .bindPopup(html, { maxWidth: 300 })
+          .bindPopup(html, { maxWidth: 320 })
           .bindTooltip(label, { permanent: true, direction: 'right' });
       });
       if (points.length) map.fitBounds(points, { padding: [50, 50], maxZoom: 10 });
