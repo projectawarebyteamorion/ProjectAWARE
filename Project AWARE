@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weather Reports</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .pop img { width: 100%; margin-top: 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
+
+const map = L.map('map').setView([41.2, -87.2], 8);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+fetch(API).then(r => r.json()).then(reports => {
+  reports.forEach(r => {
+    let html = `<div class="pop"><b>${esc(r['Is this a weather report or a morningly check in?'])}</b>`;
+    html += `<br>${esc(r['Current date'])} ${esc(r['Current time'])}`;
+    html += `<br><i>${esc(r['Please State the Location of this Event.'])}</i>`;
+    if (r['Please decribe the current situation.'])
+      html += `<br>${esc(r['Please decribe the current situation.'])}`;
+    if (r['Rainfall Amount (in inches)'])
+      html += `<br>Rain: ${esc(r['Rainfall Amount (in inches)'])} in`;
+    if (r['Snowfall amount (in inches or feet)'])
+      html += `<br>Snow: ${esc(r['Snowfall amount (in inches or feet)'])}`;
+    if (r['Hailstone size (in inches)'])
+      html += `<br>Hail: ${esc(r['Hailstone size (in inches)'])} in`;
+    if (r['Any other precipitation types'])
+      html += `<br>Other: ${esc(r['Any other precipitation types'])}`;
+    String(r.PhotoURLs || '').split(',').filter(Boolean)
+      .forEach(u => html += `<img src="${esc(u)}">`);
+    html += '</div>';
+
+    L.marker([+r.Lat, +r.Lng]).addTo(map).bindPopup(html, { maxWidth: 300 });
+  });
+});
+</script>
+</body>
+</html>
