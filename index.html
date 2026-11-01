@@ -17,7 +17,7 @@
 <div id="note">Loading reports...</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
+var API = 'PASTE_YOUR_WEB_APP_URL_HERE';
 
 var note = document.getElementById('note');
 var map = L.map('map').setView([39.5, -98.35], 4);
@@ -39,7 +39,7 @@ if (API.indexOf('PASTE_') === 0) {
     .then(function (reports) {
       note.textContent = reports.length + ' report(s) loaded';
       var points = [];
-           reports.forEach(function (r) {
+      reports.forEach(function (r) {
         var rain  = r['Rainfall Amount (in inches)'];
         var snow  = r['Snowfall amount (in inches or feet)'];
         var hail  = r['Hailstone size (in inches)'];
@@ -74,11 +74,6 @@ if (API.indexOf('PASTE_') === 0) {
         L.marker(pt).addTo(map)
           .bindPopup(html, { maxWidth: 300 })
           .bindTooltip(label, { permanent: true, direction: 'right' });
-      });
-        html += '</div>';
-        var pt = [parseFloat(r.Lat), parseFloat(r.Lng)];
-        points.push(pt);
-        L.marker(pt).addTo(map).bindPopup(html, { maxWidth: 300 });
       });
       if (points.length) map.fitBounds(points, { padding: [50, 50], maxZoom: 10 });
     })
