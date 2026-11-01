@@ -1,27 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Weather Reports</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .pop img { width: 100%; margin-top: 6px; border-radius: 4px; }
-    .pop td { padding: 1px 8px 1px 0; vertical-align: top; }
-    .nav { display: flex; gap: 4px; margin-bottom: 8px; }
-    .nav select { flex: 1; min-width: 0; }
-    .nav button { cursor: pointer; }
-    .cnt { width: 34px; height: 34px; line-height: 30px; border-radius: 50%; background: #2563eb;
-           color: #fff; font: bold 16px sans-serif; text-align: center; border: 2px solid #fff;
-           box-shadow: 0 1px 5px rgba(0,0,0,0.5); box-sizing: border-box; }
-    #logos { position: absolute; z-index: 1000; top: 10px; right: 10px; display: flex; gap: 8px; }
-    #logos img { height: 64px; width: 64px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
-    #logos .proj { border-radius: 12px; }
-    #logos .team { border-radius: 50%; background: #fff; }
-    #note { position: absolute; z-index: 1000; top: 10px; left: 50px; background: #fff;
-            padding: 6px 10px; border-radius: 4px; font: 14px sans-serif; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Reports</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+html,body,#map{height:100%;margin:0}
+.pop img{width:100%;margin-top:6px;border-radius:4px}
+.pop td{padding:1px 8px 1px 0;vertical-align:top}
+.nav{display:flex;gap:4px;margin-bottom:8px}
+.nav select{flex:1;min-width:0}
+.nav button{cursor:pointer}
+.wx-icon{pointer-events:none!important}
+.wx{position:relative;width:80px;height:80px}
+.wx svg{position:absolute;left:0;top:0;overflow:visible}
+.wx-dot{position:absolute;left:27px;top:27px;width:26px;height:26px;box-sizing:border-box;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);color:#fff;font:bold 13px/22px sans-serif;text-align:center;cursor:pointer;pointer-events:auto}
+.wx-sym{position:absolute;left:50%;top:-14px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;background:#fff;border-radius:12px;padding:1px 6px;box-shadow:0 1px 4px rgba(0,0,0,.4);font-size:15px;line-height:20px;white-space:nowrap;pointer-events:auto;cursor:pointer}
+#logos{position:absolute;z-index:1000;top:10px;right:10px;display:flex;gap:8px}
+#logos img{height:64px;width:64px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+#logos .proj{border-radius:12px}
+#logos .team{border-radius:50%;background:#fff}
+#note{position:absolute;z-index:1000;top:10px;left:50px;background:#fff;padding:6px 10px;border-radius:4px;font:14px sans-serif}
+#key{position:absolute;z-index:1000;bottom:24px;left:10px;background:rgba(255,255,255,.93);padding:6px 10px;border-radius:6px;font:12px sans-serif;max-width:230px}
+#key summary{cursor:pointer;font-weight:bold}
+</style>
 </head>
 <body>
 <div id="map"></div>
@@ -30,15 +33,25 @@
   <img class="proj" src="project-logo.png" alt="Project AWARE">
   <img class="team" src="team-logo.png" alt="Team Orion">
 </div>
+<details id="key"><summary>Map key</summary>
+  <div id="keybody"></div>
+</details>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
+var API = 'PASTE_YOUR_WEB_APP_URL_HERE';
 
 var note = document.getElementById('note');
 var map = L.map('map').setView([39.5, -98.35], 4);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors'
 }).addTo(map);
+
+var ROT = '<svg width="20" height="20" viewBox="0 0 24 24" style="vertical-align:middle"><path d="M20 12a8 8 0 1 1-2.5-5.8" fill="none" stroke="#c2410c" stroke-width="2.6" stroke-linecap="round"/><polygon points="20.4,9 19.9,3.7 15.1,8.7" fill="#c2410c"/></svg>';
+var TOR = '🌪️', STORM = '⛈️';
+
+document.getElementById('keybody').innerHTML =
+  TOR + ' Tornado reported<br>' + ROT + ' Rotation, wall cloud, or funnel<br>' + STORM + ' Thunderstorm or lightning<br>' +
+  '<div style="margin-top:4px">Wind barbs point toward where the wind comes <b>from</b>. Full barb = 10 kt, half = 5 kt, flag = 50 kt. Circle = calm.</div>';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -48,9 +61,7 @@ function esc(s) {
 
 // Finds a value by a keyword in the column header, so small typos in headers don't break it
 function pick(r, word) {
-  for (var k in r) {
-    if (k.toLowerCase().indexOf(word) !== -1) return r[k];
-  }
+  for (var k in r) { if (k.toLowerCase().indexOf(word) !== -1) return r[k]; }
   return '';
 }
 
@@ -64,77 +75,127 @@ function whenText(r) {
   return t || r.Timestamp || 'Unknown time';
 }
 
-function reportHtml(r) {
-  var type   = pick(r, 'weather report or');
-  var place  = pick(r, 'location');
-  var story  = pick(r, 'situation');
-  var temp   = pick(r, 'temperature');
-  var humid  = pick(r, 'humidity');
-  var press  = pick(r, 'pressure');
-  var rain   = pick(r, 'rainfall');
-  var snow   = pick(r, 'snowfall');
-  var hail   = pick(r, 'hail');
-  var wind   = pick(r, 'sustained');
-  var gust   = pick(r, 'gust');
-  var other  = pick(r, 'other precip');
-  var damage = pick(r, 'damage');
+// ---------- keyword detection ----------
+function has(text, words) {
+  for (var w = 0; w < words.length; w++) {
+    var from = 0, i;
+    while ((i = text.indexOf(words[w], from)) !== -1) {
+      from = i + words[w].length;
+      var before = text.slice(Math.max(0, i - 30), i);
+      var after = text.slice(from, from + 12);
+      var neg = before.match(/\b(no|not|never|without|isn't|wasn't|didn't|don't|can't|cannot|zero)\b((?:\s+[\w'-]+){0,3})\s*$/);
+      if (neg && !/\b(but|and|however|though)\b/.test(neg[2])) continue;
+      if (/^\s*(warning|watch|warned|siren)/.test(after)) continue;
+      return true;
+    }
+  }
+  return false;
+}
 
-  var html = '<b>' + esc(type) + '</b>';
+function flagsOf(r) {
+  var t = (pick(r, 'situation') + ' ' + pick(r, 'damage') + ' ' + pick(r, 'other precip')).toLowerCase();
+  return {
+    tornado: has(t, ['tornado', 'twister', 'touchdown', 'touched down']),
+    rotation: has(t, ['rotat', 'wall cloud', 'wallcloud', 'funnel', 'mesocyclone', 'circulation', 'spinning', 'cyclonic']),
+    storm: has(t, ['thunderstorm', 'thunder storm', 'thunder', 'lightning', 't-storm', 'tstorm', 'supercell', 'storm cell'])
+  };
+}
+
+// ---------- wind parsing and barbs ----------
+var DEG = { n: 0, nne: 22.5, ne: 45, ene: 67.5, e: 90, ese: 112.5, se: 135, sse: 157.5, s: 180, ssw: 202.5, sw: 225, wsw: 247.5, w: 270, wnw: 292.5, nw: 315, nnw: 337.5,
+            north: 0, northeast: 45, east: 90, southeast: 135, south: 180, southwest: 225, west: 270, northwest: 315 };
+var COMPASS = /\b(?:north-?east|north-?west|south-?east|south-?west|north|south|east|west)(?:erly)?\b|\b(?:nne|ene|ese|sse|ssw|wsw|wnw|nnw|ne|se|sw|nw)\b/;
+
+function parseWind(text) {
+  var t = String(text || '').toLowerCase(), dir = null, spd = null, m;
+  m = t.match(/\b(\d{1,3})\s*(?:°|deg(?:rees)?)?\s*(?:at|@|\/)\s*(\d{1,3})/);
+  if (m && +m[1] <= 360) { dir = +m[1]; spd = +m[2]; }
+  else {
+    var dm = t.match(COMPASS);
+    if (dm) { dir = DEG[dm[0].replace(/-/g, '').replace(/erly$/, '')]; t = t.replace(dm[0], ' '); }
+    else { var dd = t.match(/(\d{1,3})\s*(?:°|degrees)/); if (dd && +dd[1] <= 360) { dir = +dd[1]; t = t.replace(dd[0], ' '); } }
+    m = t.match(/(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)/);
+    if (m) spd = (+m[1] + +m[2]) / 2;
+    else { m = t.match(/\d+(?:\.\d+)?/); if (m) spd = +m[0]; }
+  }
+  if (dir === null || spd === null || isNaN(dir) || isNaN(spd)) return null;
+  var kt = /kt|knot/.test(t) ? spd : /km|kph/.test(t) ? spd / 1.852 : spd * 0.869;
+  return { dir: dir % 360, kt: kt };
+}
+
+function barbSvg(w) {
+  if (!w) return '';
+  var kt = Math.round(w.kt / 5) * 5;
+  var s = '<svg width="80" height="80" viewBox="0 0 80 80"><g transform="rotate(' + w.dir + ' 40 40)" stroke="#111" stroke-width="2" stroke-linecap="round" fill="#111">';
+  if (kt < 5) {
+    s += '<circle cx="40" cy="40" r="17" fill="none"/>';
+  } else {
+    var y = 8, drawn = 0;
+    s += '<line x1="40" y1="40" x2="40" y2="8"/>';
+    var flags = Math.floor(kt / 50), rem = kt - flags * 50;
+    var full = Math.floor(rem / 10), half = (rem % 10) >= 5 ? 1 : 0;
+    for (var a = 0; a < flags; a++) { s += '<polygon points="40,' + y + ' 52,' + y + ' 40,' + (y + 5) + '"/>'; y += 6; drawn++; }
+    for (var b = 0; b < full; b++) { s += '<line x1="40" y1="' + y + '" x2="52" y2="' + (y - 4) + '"/>'; y += 5; drawn++; }
+    if (half) { if (!drawn) y += 5; s += '<line x1="40" y1="' + y + '" x2="46" y2="' + (y - 2) + '"/>'; }
+  }
+  return s + '</g></svg>';
+}
+
+// ---------- popup content ----------
+function reportHtml(r) {
+  var f = flagsOf(r);
+  var rain = pick(r, 'rainfall'), hail = pick(r, 'hail'), story = pick(r, 'situation'), damage = pick(r, 'damage');
+  var html = '<b>' + esc(pick(r, 'weather report or')) + '</b>';
   html += '<br>' + esc(whenText(r));
-  html += '<br><i>' + esc(place) + '</i>';
+  html += '<br><i>' + esc(pick(r, 'location')) + '</i>';
+  var tags = [];
+  if (f.tornado) tags.push(TOR + ' Tornado');
+  if (f.rotation) tags.push(ROT + ' Rotation');
+  if (f.storm) tags.push(STORM + ' Thunderstorm');
+  if (tags.length) html += '<div style="margin:4px 0"><b>' + tags.join(' &nbsp; ') + '</b></div>';
   if (story) html += '<p style="margin:6px 0">' + esc(story) + '</p>';
   html += '<table style="width:100%;border-collapse:collapse;margin-top:6px">';
-  html += row('Temperature', temp);
-  html += row('Humidity / dew point', humid);
-  html += row('Pressure', press);
+  html += row('Temperature', pick(r, 'temperature'));
+  html += row('Humidity / dew point', pick(r, 'humidity'));
+  html += row('Pressure', pick(r, 'pressure'));
   html += row('Rainfall', rain ? rain + ' in' : '', true);
-  html += row('Snowfall', snow, true);
+  html += row('Snowfall', pick(r, 'snowfall'), true);
   html += row('Hail size', hail ? hail + ' in' : '', true);
-  html += row('Sustained wind', wind);
-  html += row('Wind gusts', gust);
-  html += row('Other', other);
+  html += row('Sustained wind', pick(r, 'sustained'));
+  html += row('Wind gusts', pick(r, 'gust'));
+  html += row('Other', pick(r, 'other precip'));
   html += '</table>';
   if (damage) html += '<p style="margin:6px 0"><b>Damage:</b> ' + esc(damage) + '</p>';
-  String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) {
-    html += '<img src="' + esc(u) + '">';
-  });
+  String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) { html += '<img src="' + esc(u) + '">'; });
   return html;
 }
 
 function shortLabel(r) {
-  var bits = [];
-  var rain = pick(r, 'rainfall'), snow = pick(r, 'snowfall'), hail = pick(r, 'hail');
-  var wind = pick(r, 'sustained'), gust = pick(r, 'gust');
-  if (rain) bits.push('Rain ' + rain + ' in');
-  if (snow) bits.push('Snow ' + snow);
-  if (hail) bits.push('Hail ' + hail + ' in');
-  if (wind) bits.push('Wind ' + wind);
-  if (gust) bits.push('Gusts ' + gust);
+  var bits = [], v;
+  if ((v = pick(r, 'rainfall'))) bits.push('Rain ' + v + ' in');
+  if ((v = pick(r, 'snowfall'))) bits.push('Snow ' + v);
+  if ((v = pick(r, 'hail'))) bits.push('Hail ' + v + ' in');
+  if ((v = pick(r, 'sustained'))) bits.push('Wind ' + v);
+  if ((v = pick(r, 'gust'))) bits.push('Gusts ' + v);
   return bits.length ? bits.join(' · ') : pick(r, 'location');
 }
 
-// Builds the popup for one marker; with several reports it gets arrows and a dropdown
+// Popup with arrows and a dropdown when a spot has several reports
 function makePopup(items) {
   var wrap = document.createElement('div');
   var popup = L.popup({ maxWidth: 320 }).setContent(wrap);
   var idx = 0;
-
   function render() {
     var head = '';
     if (items.length > 1) {
       var opts = '';
       for (var k = 0; k < items.length; k++) {
-        opts += '<option value="' + k + '"' + (k === idx ? ' selected' : '') + '>' +
-                (k + 1) + '. ' + esc(whenText(items[k])) + (k === 0 ? ' (newest)' : '') + '</option>';
+        opts += '<option value="' + k + '"' + (k === idx ? ' selected' : '') + '>' + (k + 1) + '. ' + esc(whenText(items[k])) + (k === 0 ? ' (newest)' : '') + '</option>';
       }
-      head = '<div class="nav"><button class="prev" title="Newer">&#9664;</button>' +
-             '<select class="pick">' + opts + '</select>' +
-             '<button class="next" title="Older">&#9654;</button></div>' +
-             '<div style="margin-bottom:6px;font-size:12px;color:#555">Report ' + (idx + 1) +
-             ' of ' + items.length + '</div>';
+      head = '<div class="nav"><button class="prev" title="Newer">&#9664;</button><select class="pick">' + opts + '</select><button class="next" title="Older">&#9654;</button></div>' +
+             '<div style="margin-bottom:6px;font-size:12px;color:#555">Report ' + (idx + 1) + ' of ' + items.length + '</div>';
     }
     wrap.innerHTML = head + '<div class="pop">' + reportHtml(items[idx]) + '</div>';
-
     if (items.length > 1) {
       wrap.querySelector('.prev').onclick = function () { idx = (idx - 1 + items.length) % items.length; render(); };
       wrap.querySelector('.next').onclick = function () { idx = (idx + 1) % items.length; render(); };
@@ -142,11 +203,11 @@ function makePopup(items) {
     }
     popup.update();
   }
-
   render();
   return popup;
 }
 
+// ---------- load and draw ----------
 if (API.indexOf('PASTE_') === 0) {
   note.textContent = 'The web app URL has not been added to this file yet.';
 } else {
@@ -154,8 +215,6 @@ if (API.indexOf('PASTE_') === 0) {
     .then(function (r) { return r.json(); })
     .then(function (reports) {
       note.textContent = reports.length + ' report(s) loaded';
-
-      // Group reports that share (about) the same spot
       var groups = {};
       reports.forEach(function (r, i) {
         var lat = parseFloat(r.Lat), lng = parseFloat(r.Lng);
@@ -171,32 +230,31 @@ if (API.indexOf('PASTE_') === 0) {
       var points = [];
       Object.keys(groups).forEach(function (key) {
         var g = groups[key];
-        // newest first
-        g.items.sort(function (a, b) {
-          if (a._d && b._d) return b._d - a._d;
-          return b._i - a._i;
-        });
-
-        var pt = [g.lat, g.lng];
+        g.items.sort(function (a, b) { return (a._d && b._d) ? b._d - a._d : b._i - a._i; });
+        var n = g.items.length, pt = [g.lat, g.lng];
         points.push(pt);
-        var n = g.items.length;
+
+        // symbols come from every report at this spot; the barb comes from the newest
+        var f = { tornado: false, rotation: false, storm: false };
+        g.items.forEach(function (it) {
+          var x = flagsOf(it);
+          f.tornado = f.tornado || x.tornado; f.rotation = f.rotation || x.rotation; f.storm = f.storm || x.storm;
+        });
+        var color = f.tornado ? '#dc2626' : f.rotation ? '#ea580c' : f.storm ? '#7c3aed' : '#2563eb';
+        var sym = (f.tornado ? '<span>' + TOR + '</span>' : '') + (f.rotation ? ROT : '') + (f.storm ? '<span>' + STORM + '</span>' : '');
+        var barb = barbSvg(parseWind(pick(g.items[0], 'sustained')));
+
+        var html = '<div class="wx">' + barb + '<div class="wx-dot" style="background:' + color + '">' + (n > 1 ? n : '') + '</div>' +
+                   (sym ? '<div class="wx-sym">' + sym + '</div>' : '') + '</div>';
         var label = shortLabel(g.items[0]);
         if (n > 1) label = n + ' reports · newest: ' + label;
 
-        var marker;
-        if (n > 1) {
-          marker = L.marker(pt, {
-            icon: L.divIcon({ className: '', html: '<div class="cnt">' + n + '</div>', iconSize: [34, 34], iconAnchor: [17, 17] })
-          });
-        } else {
-          marker = L.marker(pt);
-        }
-        marker.addTo(map)
+        L.marker(pt, { icon: L.divIcon({ className: 'wx-icon', html: html, iconSize: [80, 80], iconAnchor: [40, 40], popupAnchor: [0, -18] }) })
+          .addTo(map)
           .bindPopup(makePopup(g.items))
-          .bindTooltip(esc(label), { permanent: true, direction: 'right', offset: n > 1 ? [14, 0] : [0, 0] });
+          .bindTooltip(esc(label), { permanent: true, direction: 'right', offset: [34, 0] });
       });
-
-      if (points.length) map.fitBounds(points, { padding: [50, 50], maxZoom: 10 });
+      if (points.length) map.fitBounds(points, { padding: [60, 60], maxZoom: 10 });
     })
     .catch(function (err) { note.textContent = 'Error: ' + err.message; });
 }
