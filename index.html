@@ -8,44 +8,58 @@
   <style>
     html, body, #map { height: 100%; margin: 0; }
     .pop img { width: 100%; margin-top: 6px; border-radius: 4px; }
+    #note { position: absolute; z-index: 1000; top: 10px; left: 50px; background: #fff;
+            padding: 6px 10px; border-radius: 4px; font: 14px sans-serif; }
   </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="note">Loading reports...</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
+var API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
 
-const map = L.map('map').setView([41.2, -87.2], 8);
+var note = document.getElementById('note');
+var map = L.map('map').setView([39.5, -98.35], 4);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-fetch(API).then(r => r.json()).then(reports => {
-  reports.forEach(r => {
-    let html = `<div class="pop"><b>${esc(r['Is this a weather report or a morningly check in?'])}</b>`;
-    html += `<br>${esc(r['Current date'])} ${esc(r['Current time'])}`;
-    html += `<br><i>${esc(r['Please State the Location of this Event.'])}</i>`;
-    if (r['Please decribe the current situation.'])
-      html += `<br>${esc(r['Please decribe the current situation.'])}`;
-    if (r['Rainfall Amount (in inches)'])
-      html += `<br>Rain: ${esc(r['Rainfall Amount (in inches)'])} in`;
-    if (r['Snowfall amount (in inches or feet)'])
-      html += `<br>Snow: ${esc(r['Snowfall amount (in inches or feet)'])}`;
-    if (r['Hailstone size (in inches)'])
-      html += `<br>Hail: ${esc(r['Hailstone size (in inches)'])} in`;
-    if (r['Any other precipitation types'])
-      html += `<br>Other: ${esc(r['Any other precipitation types'])}`;
-    String(r.PhotoURLs || '').split(',').filter(Boolean)
-      .forEach(u => html += `<img src="${esc(u)}">`);
-    html += '</div>';
-
-    L.marker([+r.Lat, +r.Lng]).addTo(map).bindPopup(html, { maxWidth: 300 });
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
-});
+}
+
+if (API.indexOf('PASTE_') === 0) {
+  note.textContent = 'The web app URL has not been added to this file yet.';
+} else {
+  fetch(API)
+    .then(function (r) { return r.json(); })
+    .then(function (reports) {
+      note.textContent = reports.length + ' report(s) loaded';
+      var points = [];
+      reports.forEach(function (r) {
+        var html = '<div class="pop"><b>' + esc(r['Is this a weather report or a morningly check in?']) + '</b>';
+        html += '<br>' + esc(r['Current date']) + ' ' + esc(r['Current time']);
+        html += '<br><i>' + esc(r['Please State the Location of this Event.']) + '</i>';
+        if (r['Please decribe the current situation.']) html += '<br>' + esc(r['Please decribe the current situation.']);
+        if (r['Rainfall Amount (in inches)']) html += '<br>Rain: ' + esc(r['Rainfall Amount (in inches)']) + ' in';
+        if (r['Snowfall amount (in inches or feet)']) html += '<br>Snow: ' + esc(r['Snowfall amount (in inches or feet)']);
+        if (r['Hailstone size (in inches)']) html += '<br>Hail: ' + esc(r['Hailstone size (in inches)']) + ' in';
+        if (r['Any other precipitation types']) html += '<br>Other: ' + esc(r['Any other precipitation types']);
+        String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) {
+          html += '<img src="' + esc(u) + '">';
+        });
+        html += '</div>';
+        var pt = [parseFloat(r.Lat), parseFloat(r.Lng)];
+        points.push(pt);
+        L.marker(pt).addTo(map).bindPopup(html, { maxWidth: 300 });
+      });
+      if (points.length) map.fitBounds(points, { padding: [50, 50], maxZoom: 10 });
+    })
+    .catch(function (err) { note.textContent = 'Error: ' + err.message; });
+}
 </script>
 </body>
 </html>
