@@ -39,18 +39,42 @@ if (API.indexOf('PASTE_') === 0) {
     .then(function (reports) {
       note.textContent = reports.length + ' report(s) loaded';
       var points = [];
-      reports.forEach(function (r) {
+           reports.forEach(function (r) {
+        var rain  = r['Rainfall Amount (in inches)'];
+        var snow  = r['Snowfall amount (in inches or feet)'];
+        var hail  = r['Hailstone size (in inches)'];
+        var other = r['Any other precipitation types'];
+        var wind  = r['Wind speed and direction (in mph or knots)'];
+
         var html = '<div class="pop"><b>' + esc(r['Is this a weather report or a morningly check in?']) + '</b>';
         html += '<br>' + esc(r['Current date']) + ' ' + esc(r['Current time']);
         html += '<br><i>' + esc(r['Please State the Location of this Event.']) + '</i>';
-        if (r['Please decribe the current situation.']) html += '<br>' + esc(r['Please decribe the current situation.']);
-        if (r['Rainfall Amount (in inches)']) html += '<br>Rain: ' + esc(r['Rainfall Amount (in inches)']) + ' in';
-        if (r['Snowfall amount (in inches or feet)']) html += '<br>Snow: ' + esc(r['Snowfall amount (in inches or feet)']);
-        if (r['Hailstone size (in inches)']) html += '<br>Hail: ' + esc(r['Hailstone size (in inches)']) + ' in';
-        if (r['Any other precipitation types']) html += '<br>Other: ' + esc(r['Any other precipitation types']);
+        if (r['Please decribe the current situation.']) html += '<p>' + esc(r['Please decribe the current situation.']) + '</p>';
+        html += '<table style="width:100%;border-collapse:collapse;margin-top:6px">';
+        html += '<tr><td>Rainfall</td><td><b>' + (rain ? esc(rain) + ' in' : 'None') + '</b></td></tr>';
+        html += '<tr><td>Snowfall</td><td><b>' + (snow ? esc(snow) : 'None') + '</b></td></tr>';
+        html += '<tr><td>Hail size</td><td><b>' + (hail ? esc(hail) + ' in' : 'None') + '</b></td></tr>';
+        html += '<tr><td>Wind</td><td><b>' + (wind ? esc(wind) : 'None') + '</b></td></tr>';
+        html += '<tr><td>Other</td><td><b>' + (other ? esc(other) : 'None') + '</b></td></tr>';
+        html += '</table>';
         String(r.PhotoURLs || '').split(',').filter(Boolean).forEach(function (u) {
           html += '<img src="' + esc(u) + '">';
         });
+        html += '</div>';
+
+        var bits = [];
+        if (rain) bits.push('Rain ' + esc(rain) + ' in');
+        if (snow) bits.push('Snow ' + esc(snow));
+        if (hail) bits.push('Hail ' + esc(hail) + ' in');
+        if (wind) bits.push('Wind ' + esc(wind));
+        var label = bits.length ? bits.join(' · ') : esc(r['Please State the Location of this Event.']);
+
+        var pt = [parseFloat(r.Lat), parseFloat(r.Lng)];
+        points.push(pt);
+        L.marker(pt).addTo(map)
+          .bindPopup(html, { maxWidth: 300 })
+          .bindTooltip(label, { permanent: true, direction: 'right' });
+      });
         html += '</div>';
         var pt = [parseFloat(r.Lat), parseFloat(r.Lng)];
         points.push(pt);
