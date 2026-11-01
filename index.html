@@ -288,8 +288,11 @@ if (API.indexOf('PASTE_') === 0) {
     .catch(function (err) { note.textContent = 'Error: ' + err.message; });
 }
 if (location.hash === '#owner') {
-  var btn = document.getElementById('clearbtn');
-  btn.style.display = 'block';
+  var btn = document.getElementById('clearbtn') || document.createElement('button');
+  btn.id = 'clearbtn';
+  btn.textContent = 'Clear all reports';
+  btn.style.cssText = 'display:block;position:absolute;z-index:1000;bottom:24px;right:10px;background:#dc2626;color:#fff;border:0;border-radius:6px;padding:8px 12px;font:bold 13px sans-serif;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.4)';
+  document.body.appendChild(btn);
   btn.onclick = function () {
     var key = prompt('Owner passcode:');
     if (!key) return;
