@@ -24,12 +24,22 @@ html,body,#map{height:100%;margin:0}
 #note{position:absolute;z-index:1000;top:10px;left:50px;background:#fff;padding:6px 10px;border-radius:4px;font:14px sans-serif}
 #key{position:absolute;z-index:1000;bottom:24px;left:10px;background:rgba(255,255,255,.93);padding:6px 10px;border-radius:6px;font:12px sans-serif;max-width:230px}
 #key summary{cursor:pointer;font-weight:bold}
+  #radarbox{position:absolute;z-index:1000;top:84px;left:10px;background:rgba(255,255,255,.95);padding:6px 10px;border-radius:6px;font:13px sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+#radarbox button{cursor:pointer}
+#radarbox .row{margin-top:4px}
 #clearbtn{display:none;position:absolute;z-index:1000;bottom:24px;right:10px;background:#dc2626;color:#fff;border:0;border-radius:6px;padding:8px 12px;font:bold 13px sans-serif;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="note">Loading reports...</div>
+  <div id="radarbox">
+  <label><input type="checkbox" id="radarchk"> Radar</label>
+  <div id="radarctl" style="display:none">
+    <div class="row"><button id="radarplay">&#9654; Loop</button> <span id="radartime">Now</span></div>
+    <div class="row">Opacity <input type="range" id="radaropac" min="20" max="100" value="70" style="width:90px;vertical-align:middle"></div>
+  </div>
+</div>
 <div id="logos">
   <img class="proj" src="project-logo.png" alt="Project AWARE">
   <img class="team" src="team-logo.png" alt="Team Orion">
@@ -236,7 +246,42 @@ function makePopup(items) {
   return popup;
 }
 
-// ---------- load and draw ----------
+// ---------- radar ----------
+var RADAR_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913';
+var FRAMES = ['-m50m','-m45m','-m40m','-m35m','-m30m','-m25m','-m20m','-m15m','-m10m','-m05m',''];
+var LAST = FRAMES.length - 1;
+var radar = L.tileLayer(RADAR_BASE + '/{z}/{x}/{y}.png', {
+  opacity: 0.7, maxNativeZoom: 10,
+  attribution: 'Radar: NWS NEXRAD via Iowa Environmental Mesonet'
+});
+var loopTimer = null;
+
+function setFrame(i) {
+  radar.setUrl(RADAR_BASE + FRAMES[i] + '/{z}/{x}/{y}.png?t=' + Math.floor(Date.now() / 300000));
+  var mins = (LAST - i) * 5;
+  document.getElementById('radartime').textContent = mins ? mins + ' min ago' : 'Now';
+}
+function stopLoop() {
+  if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+  document.getElementById('radarplay').innerHTML = '&#9654; Loop';
+  setFrame(LAST);
+}
+document.getElementById('radarchk').onchange = function () {
+  var on = this.checked;
+  document.getElementById('radarctl').style.display = on ? 'block' : 'none';
+  if (on) { setFrame(LAST); radar.addTo(map); }
+  else { stopLoop(); map.removeLayer(radar); }
+};
+document.getElementById('radarplay').onclick = function () {
+  if (loopTimer) { stopLoop(); return; }
+  this.innerHTML = '&#9632; Stop';
+  var i = 0; setFrame(0);
+  loopTimer = setInterval(function () { i = (i + 1) % FRAMES.length; setFrame(i); }, 700);
+};
+document.getElementById('radaropac').oninput = function () { radar.setOpacity(this.value / 100); };
+setInterval(function () { if (map.hasLayer(radar) && !loopTimer) setFrame(LAST); }, 300000);
+L.DomEvent.disableClickPropagation(document.getElementById('radarbox'));
+  // ---------- load and draw ----------
 if (API.indexOf('PASTE_') === 0) {
   note.textContent = 'The web app URL has not been added to this file yet.';
 } else {
