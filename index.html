@@ -31,8 +31,28 @@ html,body,#map{height:100%;margin:0}
 </style>
 </head>
 <body>
-<div id="map"></div>
-<div id="note">Loading reports...</div>
+<div id="radarbox">
+  <label><input type="checkbox" id="radarchk"> Radar (whole US)</label>
+  <div id="radarctl" style="display:none">
+    <div class="row"><button id="radarplay">&#9654; Loop</button> <span id="radartime">Now</span></div>
+    <div class="row">Opacity <input type="range" id="radaropac" min="20" max="100" value="70" style="width:90px;vertical-align:middle"></div>
+  </div>
+  <details class="row">
+    <summary style="cursor:pointer">Single radar site</summary>
+    <div class="row"><input type="text" id="sitein" placeholder="KIWX" maxlength="4" style="width:60px;text-transform:uppercase"> <button id="sitego">Show</button></div>
+    <div class="row"><select id="siteprod">
+      <option value="N0B">Reflectivity</option>
+      <option value="N0G">Velocity</option>
+      <option value="N0S">Storm-relative velocity</option>
+      <option value="N0C">Correlation coeff. (CC)</option>
+      <option value="N0X">Diff. reflectivity (ZDR)</option>
+      <option value="N0K">Specific diff. phase (KDP)</option>
+      <option value="N0H">Hydrometeor class.</option>
+    </select></div>
+    <div class="row"><span id="sitemsg" style="font-size:12px"></span> <button id="siteoff" style="display:none">Off</button></div>
+  </details>
+</div>
+  <div id="note">Loading reports...</div>
   <div id="radarbox">
   <label><input type="checkbox" id="radarchk"> Radar</label>
   <div id="radarctl" style="display:none">
@@ -281,6 +301,61 @@ document.getElementById('radarplay').onclick = function () {
 document.getElementById('radaropac').oninput = function () { radar.setOpacity(this.value / 100); };
 setInterval(function () { if (map.hasLayer(radar) && !loopTimer) setFrame(LAST); }, 300000);
 L.DomEvent.disableClickPropagation(document.getElementById('radarbox'));
+  // ---------- single radar site ----------
+var siteRadar = L.tileLayer('', {
+  opacity: 0.85, maxNativeZoom: 10,
+  attribution: 'Single-site radar: NWS NEXRAD via Iowa Environmental Mesonet'
+});
+var siteState = null;
+
+function siteUrl() {
+  return 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::' + siteState.id + '-' + siteState.prod +
+         '-0/{z}/{x}/{y}.png?t=' + Math.floor(Date.now() / 300000);
+}
+function siteLabel() {
+  var sel = document.getElementById('siteprod');
+  return siteState.api + ' · ' + sel.options[sel.selectedIndex].text + ' · latest scan';
+}
+
+function showSite() {
+  var raw = document.getElementById('sitein').value.trim().toUpperCase();
+  var msg = document.getElementById('sitemsg');
+  if (!/^[A-Z]{3,4}$/.test(raw)) { msg.textContent = 'Enter a radar ID like KIWX'; return; }
+  siteState = {
+    id: raw.length === 4 ? raw.slice(1) : raw,
+    api: raw.length === 3 ? 'K' + raw : raw,
+    prod: document.getElementById('siteprod').value
+  };
+  var chk = document.getElementById('radarchk');
+  if (chk.checked) { chk.checked = false; chk.onchange(); }
+  siteRadar.setUrl(siteUrl());
+  if (!map.hasLayer(siteRadar)) siteRadar.addTo(map);
+  document.getElementById('siteoff').style.display = 'inline';
+  msg.textContent = siteLabel();
+
+  // try to move the map to the radar site
+  fetch('https://api.weather.gov/radar/stations/' + siteState.api)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var c = d && d.geometry && d.geometry.coordinates;
+      if (c) map.setView([c[1], c[0]], Math.max(map.getZoom(), 8));
+    })
+    .catch(function () {});
+}
+
+document.getElementById('sitego').onclick = showSite;
+document.getElementById('sitein').onkeydown = function (e) { if (e.key === 'Enter') showSite(); };
+document.getElementById('siteprod').onchange = function () {
+  if (!siteState || !map.hasLayer(siteRadar)) return;
+  siteState.prod = this.value;
+  siteRadar.setUrl(siteUrl());
+  document.getElementById('sitemsg').textContent = siteLabel();
+};
+document.getElementById('siteoff').onclick = function () {
+  map.removeLayer(siteRadar); siteState = null; this.style.display = 'none';
+  document.getElementById('sitemsg').textContent = '';
+};
+setInterval(function () { if (siteState && map.hasLayer(siteRadar)) siteRadar.setUrl(siteUrl()); }, 300000);
   // ---------- load and draw ----------
 if (API.indexOf('PASTE_') === 0) {
   note.textContent = 'The web app URL has not been added to this file yet.';
