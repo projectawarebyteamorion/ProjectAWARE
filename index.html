@@ -54,4 +54,408 @@ html,body,#map{height:100%;margin:0}
     <div class="row"><span id="sitemsg" style="font-size:12px"></span> <button id="siteoff" style="display:none">Off</button></div>
   </details>
 </div>
-<div
+<div id="logos">
+  <img class="proj" src="project-logo.png" alt="Project AWARE">
+  <img class="team" src="team-logo.png" alt="Team Orion">
+</div>
+<details id="key"><summary>Map key</summary>
+  <div id="keybody"></div>
+</details>
+<button id="clearbtn">Clear all reports</button>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbzBWh-Y9oTxKlbYC4_p2mNv2arps8jiTcNMpSYPaM3PYvh-Doq5GOznIFn_6Kc3QMO3/exec';
+
+var note = document.getElementById('note');
+var map = L.map('map').setView([39.5, -98.35], 4);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+var ROT = '<svg width="20" height="20" viewBox="0 0 24 24" style="vertical-align:middle"><path d="M20 12a8 8 0 1 1-2.5-5.8" fill="none" stroke="#c2410c" stroke-width="2.6" stroke-linecap="round"/><polygon points="20.4,9 19.9,3.7 15.1,8.7" fill="#c2410c"/></svg>';
+var TOR = '🌪️', STORM = '⛈️', CAP = '⚠️';
+
+document.getElementById('keybody').innerHTML =
+  TOR + ' Tornado reported (confirmed)<br>' + CAP + ' Tornado-capable or possible, <b>not confirmed</b><br>' +
+  ROT + ' Rotation, wall cloud, or funnel<br>' + STORM + ' Thunderstorm or lightning<br>' +
+  '<div style="margin-top:4px">Wind barbs point toward where the wind comes <b>from</b>. Full barb = 10 kt, half = 5 kt, flag = 50 kt. Circle = calm.</div>';
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// Finds a value by a keyword in the column header, so small typos in headers don't break it
+function pick(r, word) {
+  for (var k in r) { if (k.toLowerCase().indexOf(word) !== -1) return r[k]; }
+  return '';
+}
+
+function row(label, val, always) {
+  if (!val && !always) return '';
+  return '<tr><td>' + label + '</td><td><b>' + (val ? esc(val) : 'None') + '</b></td></tr>';
+}
+
+function whenText(r) {
+  var t = (pick(r, 'current date') + ' ' + pick(r, 'current time')).trim();
+  return t || r.Timestamp || 'Unknown time';
+}
+
+// ---------- keyword detection ----------
+function has(text, words) {
+  for (var w = 0; w < words.length; w++) {
+    var from = 0, i;
+    while ((i = text.indexOf(words[w], from)) !== -1) {
+      from = i + words[w].length;
+      var before = text.slice(Math.max(0, i - 30), i);
+      var after = text.slice(from, from + 12);
+      var neg = before.match(/\b(no|not|never|without|isn't|wasn't|didn't|don't|can't|cannot|zero)\b((?:\s+[\w'-]+){0,3})\s*$/);
+      if (neg && !/\b(but|and|however|though)\b/.test(neg[2])) continue;
+      if (/^\s*(warning|watch|warned|siren)/.test(after)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+// 0 = none, 1 = capable/possible (not confirmed), 2 = tornado reported
+function tornadoLevel(t) {
+  var words = ['tornado', 'twister', 'touchdown', 'touched down'];
+  var level = /tornadic/.test(t) ? 1 : 0;
+  for (var w = 0; w < words.length; w++) {
+    var from = 0, i;
+    while ((i = t.indexOf(words[w], from)) !== -1) {
+      from = i + words[w].length;
+      var before = t.slice(Math.max(0, i - 45), i).split(/[.!?;\n]|\bbut\b/).pop();
+      var after = t.slice(from, from + 16);
+      var neg = before.match(/\b(no|not|never|without|isn't|wasn't|didn't|don't|can't|cannot|zero)\b((?:\s+[\w'-]+){0,3})\s*$/);
+      if (neg && !/\b(but|and|however|though)\b/.test(neg[2])) continue;
+      if (/^\s*(warning|watch|siren)/.test(after)) continue;
+      var hedged = /\b(capable of|could|may|might|possible|possibly|potential|potentially|probable|probably|likely|looks like|looked like|appears|appeared|seems|resembl\w+|threat of|risk of|chance of|prone to)\b/.test(before) ||
+                   /^\s*(?:is |was |looks? )?(?:possible|probable|likely|potential|threat|risk)|^[\s-]*(?:capable|warned)/.test(after);
+      if (hedged) level = Math.max(level, 1); else level = 2;
+    }
+  }
+  return level;
+}
+
+function flagsOf(r) {
+  var t = (pick(r, 'situation') + ' ' + pick(r, 'damage') + ' ' + pick(r, 'other precip')).toLowerCase();
+  var tl = tornadoLevel(t);
+  return {
+    tornado: tl === 2,
+    capable: tl === 1,
+    rotation: has(t, ['rotat', 'wall cloud', 'wallcloud', 'funnel', 'mesocyclone', 'circulation', 'spinning', 'cyclonic']),
+    storm: has(t, ['thunderstorm', 'thunder storm', 'thunder', 'lightning', 't-storm', 'tstorm', 'supercell', 'storm cell'])
+  };
+}
+
+// ---------- wind parsing and barbs ----------
+var DEG = { n: 0, nne: 22.5, ne: 45, ene: 67.5, e: 90, ese: 112.5, se: 135, sse: 157.5, s: 180, ssw: 202.5, sw: 225, wsw: 247.5, w: 270, wnw: 292.5, nw: 315, nnw: 337.5,
+            north: 0, northeast: 45, east: 90, southeast: 135, south: 180, southwest: 225, west: 270, northwest: 315 };
+var COMPASS = /\b(?:north-?east|north-?west|south-?east|south-?west|north|south|east|west)(?:erly)?\b|\b(?:nne|ene|ese|sse|ssw|wsw|wnw|nnw|ne|se|sw|nw)\b/;
+
+function parseWind(text) {
+  var t = String(text || '').toLowerCase(), dir = null, spd = null, m;
+  m = t.match(/\b(\d{1,3})\s*(?:°|deg(?:rees)?)?\s*(?:at|@|\/)\s*(\d{1,3})/);
+  if (m && +m[1] <= 360) { dir = +m[1]; spd = +m[2]; }
+  else {
+    var dm = t.match(COMPASS);
+    if (dm) { dir = DEG[dm[0].replace(/-/g, '').replace(/erly$/, '')]; t = t.replace(dm[0], ' '); }
+    else { var dd = t.match(/(\d{1,3})\s*(?:°|degrees)/); if (dd && +dd[1] <= 360) { dir = +dd[1]; t = t.replace(dd[0], ' '); } }
+    m = t.match(/(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)/);
+    if (m) spd = (+m[1] + +m[2]) / 2;
+    else { m = t.match(/\d+(?:\.\d+)?/); if (m) spd = +m[0]; }
+  }
+  if (dir === null || spd === null || isNaN(dir) || isNaN(spd)) return null;
+  var kt = /kt|knot/.test(t) ? spd : /km|kph/.test(t) ? spd / 1.852 : spd * 0.869;
+  return { dir: dir % 360, kt: kt };
+}
+
+function barbSvg(w) {
+  if (!w) return '';
+  var kt = Math.round(w.kt / 5) * 5;
+  var s = '<svg width="80" height="80" viewBox="0 0 80 80"><g transform="rotate(' + w.dir + ' 40 40)" stroke="#111" stroke-width="2" stroke-linecap="round" fill="#111">';
+  if (kt < 5) {
+    s += '<circle cx="40" cy="40" r="17" fill="none"/>';
+  } else {
+    var y = 8, drawn = 0;
+    s += '<line x1="40" y1="40" x2="40" y2="8"/>';
+    var flags = Math.floor(kt / 50), rem = kt - flags * 50;
+    var full = Math.floor(rem / 10), half = (rem % 10) >= 5 ? 1 : 0;
+    for (var a = 0; a < flags; a++) { s += '<polygon points="40,' + y + ' 52,' + y + ' 40,' + (y + 5) + '"/>'; y += 6; drawn++; }
+    for (var b = 0; b < full; b++) { s += '<line x1="40" y1="' + y + '" x2="52" y2="' + (y - 4) + '"/>'; y += 5; drawn++; }
+    if (half) { if (!drawn) y += 5; s += '<line x1="40" y1="' + y + '" x2="46" y2="' + (y - 2) + '"/>'; }
+  }
+  return s + '</g></svg>';
+}
+
+// ---------- photos ----------
+function driveIds(r) {
+  var src = String(r.PhotoURLs || '') + ',' + pick(r, 'upload media');
+  var ids = [], parts = src.split(',');
+  for (var i = 0; i < parts.length; i++) {
+    var m = parts[i].match(/[-\w]{25,}/);
+    if (m && ids.indexOf(m[0]) === -1) ids.push(m[0]);
+  }
+  return ids;
+}
+
+function photosHtml(r) {
+  var html = '';
+  driveIds(r).forEach(function (id) {
+    var img = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w800';
+    var open = 'https://drive.google.com/file/d/' + id + '/view';
+    html += '<a href="' + open + '" target="_blank"><img data-id="' + id + '" src="' + img + '"></a>';
+  });
+  return html;
+}
+
+// ---------- popup content ----------
+function reportHtml(r) {
+  var f = flagsOf(r);
+  var rain = pick(r, 'rainfall'), hail = pick(r, 'hail'), story = pick(r, 'situation'), damage = pick(r, 'damage');
+  var html = '<b>' + esc(pick(r, 'weather report or')) + '</b>';
+  html += '<br>' + esc(whenText(r));
+  html += '<br><i>' + esc(pick(r, 'location')) + '</i>';
+  var tags = [];
+  if (f.tornado) tags.push(TOR + ' Tornado');
+  if (f.capable) tags.push(CAP + ' Tornado-capable (not confirmed)');
+  if (f.rotation) tags.push(ROT + ' Rotation');
+  if (f.storm) tags.push(STORM + ' Thunderstorm');
+  if (tags.length) html += '<div style="margin:4px 0"><b>' + tags.join(' &nbsp; ') + '</b></div>';
+  if (story) html += '<p style="margin:6px 0">' + esc(story) + '</p>';
+  html += '<table style="width:100%;border-collapse:collapse;margin-top:6px">';
+  html += row('Temperature', pick(r, 'temperature'));
+  html += row('Humidity / dew point', pick(r, 'humidity'));
+  html += row('Pressure', pick(r, 'pressure'));
+  html += row('Rainfall', rain ? rain + ' in' : '', true);
+  html += row('Snowfall', pick(r, 'snowfall'), true);
+  html += row('Hail size', hail ? hail + ' in' : '', true);
+  html += row('Sustained wind', pick(r, 'sustained'));
+  html += row('Wind gusts', pick(r, 'gust'));
+  html += row('Other', pick(r, 'other precip'));
+  html += '</table>';
+  if (damage) html += '<p style="margin:6px 0"><b>Damage:</b> ' + esc(damage) + '</p>';
+  html += photosHtml(r);
+  return html;
+}
+
+function shortLabel(r) {
+  var bits = [], v;
+  if ((v = pick(r, 'rainfall'))) bits.push('Rain ' + v + ' in');
+  if ((v = pick(r, 'snowfall'))) bits.push('Snow ' + v);
+  if ((v = pick(r, 'hail'))) bits.push('Hail ' + v + ' in');
+  if ((v = pick(r, 'sustained'))) bits.push('Wind ' + v);
+  if ((v = pick(r, 'gust'))) bits.push('Gusts ' + v);
+  return bits.length ? bits.join(' · ') : pick(r, 'location');
+}
+
+// Popup with arrows and a dropdown when a spot has several reports
+function makePopup(items) {
+  var wrap = document.createElement('div');
+  var popup = L.popup({ maxWidth: 320 }).setContent(wrap);
+  var idx = 0;
+  function render() {
+    var head = '';
+    if (items.length > 1) {
+      var opts = '';
+      for (var k = 0; k < items.length; k++) {
+        opts += '<option value="' + k + '"' + (k === idx ? ' selected' : '') + '>' + (k + 1) + '. ' + esc(whenText(items[k])) + (k === 0 ? ' (newest)' : '') + '</option>';
+      }
+      head = '<div class="nav"><button class="prev" title="Newer">&#9664;</button><select class="pick">' + opts + '</select><button class="next" title="Older">&#9654;</button></div>' +
+             '<div style="margin-bottom:6px;font-size:12px;color:#555">Report ' + (idx + 1) + ' of ' + items.length + '</div>';
+    }
+    wrap.innerHTML = head + '<div class="pop">' + reportHtml(items[idx]) + '</div>';
+    if (items.length > 1) {
+      wrap.querySelector('.prev').onclick = function () { idx = (idx - 1 + items.length) % items.length; render(); };
+      wrap.querySelector('.next').onclick = function () { idx = (idx + 1) % items.length; render(); };
+      wrap.querySelector('.pick').onchange = function () { idx = parseInt(this.value, 10); render(); };
+    }
+    wrap.querySelectorAll('img[data-id]').forEach(function (im) {
+      im.onload = function () { popup.update(); };
+      im.onerror = function () {
+        if (!im.dataset.t) { im.dataset.t = '1'; im.src = 'https://lh3.googleusercontent.com/d/' + im.dataset.id + '=w800'; }
+        else { im.outerHTML = '<span style="font-size:12px">Photo could not load</span>'; }
+      };
+    });
+    popup.update();
+  }
+  render();
+  return popup;
+}
+
+// ---------- radar: whole US ----------
+var RADAR_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913';
+var FRAMES = ['-m50m','-m45m','-m40m','-m35m','-m30m','-m25m','-m20m','-m15m','-m10m','-m05m',''];
+var LAST = FRAMES.length - 1;
+var radar = L.tileLayer(RADAR_BASE + '/{z}/{x}/{y}.png', {
+  opacity: 0.7, maxNativeZoom: 10,
+  attribution: 'Radar: NWS NEXRAD via Iowa Environmental Mesonet'
+});
+var loopTimer = null;
+
+function setFrame(i) {
+  radar.setUrl(RADAR_BASE + FRAMES[i] + '/{z}/{x}/{y}.png?t=' + Math.floor(Date.now() / 300000));
+  var mins = (LAST - i) * 5;
+  document.getElementById('radartime').textContent = mins ? mins + ' min ago' : 'Now';
+}
+function stopLoop() {
+  if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+  document.getElementById('radarplay').innerHTML = '&#9654; Loop';
+  setFrame(LAST);
+}
+document.getElementById('radarchk').onchange = function () {
+  var on = this.checked;
+  document.getElementById('radarctl').style.display = on ? 'block' : 'none';
+  if (on) { setFrame(LAST); radar.addTo(map); }
+  else { stopLoop(); map.removeLayer(radar); }
+};
+document.getElementById('radarplay').onclick = function () {
+  if (loopTimer) { stopLoop(); return; }
+  this.innerHTML = '&#9632; Stop';
+  var i = 0; setFrame(0);
+  loopTimer = setInterval(function () { i = (i + 1) % FRAMES.length; setFrame(i); }, 700);
+};
+document.getElementById('radaropac').oninput = function () { radar.setOpacity(this.value / 100); };
+setInterval(function () { if (map.hasLayer(radar) && !loopTimer) setFrame(LAST); }, 300000);
+L.DomEvent.disableClickPropagation(document.getElementById('radarbox'));
+
+// ---------- radar: single site ----------
+var siteRadar = L.tileLayer('', {
+  opacity: 0.85, maxNativeZoom: 10,
+  attribution: 'Single-site radar: NWS NEXRAD via Iowa Environmental Mesonet'
+});
+var siteState = null;
+
+function siteUrl() {
+  return 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::' + siteState.id + '-' + siteState.prod +
+         '-0/{z}/{x}/{y}.png?t=' + Math.floor(Date.now() / 300000);
+}
+function siteLabel() {
+  var sel = document.getElementById('siteprod');
+  return siteState.api + ' · ' + sel.options[sel.selectedIndex].text + ' · latest scan';
+}
+
+function showSite() {
+  var raw = document.getElementById('sitein').value.trim().toUpperCase();
+  var msg = document.getElementById('sitemsg');
+  if (!/^[A-Z]{3,4}$/.test(raw)) { msg.textContent = 'Enter a radar ID like KIWX'; return; }
+  siteState = {
+    id: raw.length === 4 ? raw.slice(1) : raw,
+    api: raw.length === 3 ? 'K' + raw : raw,
+    prod: document.getElementById('siteprod').value
+  };
+  var chk = document.getElementById('radarchk');
+  if (chk.checked) { chk.checked = false; chk.onchange(); }
+  siteRadar.setUrl(siteUrl());
+  if (!map.hasLayer(siteRadar)) siteRadar.addTo(map);
+  document.getElementById('siteoff').style.display = 'inline';
+  msg.textContent = siteLabel();
+
+  // try to move the map to the radar site
+  fetch('https://api.weather.gov/radar/stations/' + siteState.api)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var c = d && d.geometry && d.geometry.coordinates;
+      if (c) map.setView([c[1], c[0]], Math.max(map.getZoom(), 8));
+    })
+    .catch(function () {});
+}
+
+document.getElementById('sitego').onclick = showSite;
+document.getElementById('sitein').onkeydown = function (e) { if (e.key === 'Enter') showSite(); };
+document.getElementById('siteprod').onchange = function () {
+  if (!siteState || !map.hasLayer(siteRadar)) return;
+  siteState.prod = this.value;
+  siteRadar.setUrl(siteUrl());
+  document.getElementById('sitemsg').textContent = siteLabel();
+};
+document.getElementById('siteoff').onclick = function () {
+  map.removeLayer(siteRadar); siteState = null; this.style.display = 'none';
+  document.getElementById('sitemsg').textContent = '';
+};
+setInterval(function () { if (siteState && map.hasLayer(siteRadar)) siteRadar.setUrl(siteUrl()); }, 300000);
+
+// ---------- load and draw reports ----------
+if (String(API).indexOf('PASTE_') === 0) {
+  note.textContent = 'The web app URL has not been added to this file yet.';
+} else {
+  fetch(API)
+    .then(function (r) { return r.json(); })
+    .then(function (reports) {
+      note.textContent = reports.length + ' report(s) loaded';
+
+      var groups = {};
+      reports.forEach(function (r, i) {
+        var lat = parseFloat(r.Lat), lng = parseFloat(r.Lng);
+        if (isNaN(lat) || isNaN(lng)) return;
+        r._i = i;
+        var d = Date.parse(r.Timestamp);
+        r._d = isNaN(d) ? null : d;
+        var key = lat.toFixed(3) + ',' + lng.toFixed(3);
+        if (!groups[key]) groups[key] = { lat: lat, lng: lng, items: [] };
+        groups[key].items.push(r);
+      });
+
+      var points = [];
+      Object.keys(groups).forEach(function (key) {
+        var g = groups[key];
+        g.items.sort(function (a, b) { return (a._d && b._d) ? b._d - a._d : b._i - a._i; });
+        var n = g.items.length, pt = [g.lat, g.lng];
+        points.push(pt);
+
+        // symbols come from every report at this spot; the barb comes from the newest
+        var f = { tornado: false, capable: false, rotation: false, storm: false };
+        g.items.forEach(function (it) {
+          var x = flagsOf(it);
+          f.tornado = f.tornado || x.tornado; f.capable = f.capable || x.capable;
+          f.rotation = f.rotation || x.rotation; f.storm = f.storm || x.storm;
+        });
+        var color = f.tornado ? '#dc2626' : f.rotation ? '#ea580c' : f.capable ? '#ca8a04' : f.storm ? '#7c3aed' : '#2563eb';
+        var sym = (f.tornado ? '<span>' + TOR + '</span>' : '') + (f.capable && !f.tornado ? '<span>' + CAP + '</span>' : '') +
+                  (f.rotation ? ROT : '') + (f.storm ? '<span>' + STORM + '</span>' : '');
+        var barb = barbSvg(parseWind(pick(g.items[0], 'sustained')));
+
+        var html = '<div class="wx">' + barb + '<div class="wx-dot" style="background:' + color + '">' + (n > 1 ? n : '') + '</div>' +
+                   (sym ? '<div class="wx-sym">' + sym + '</div>' : '') + '</div>';
+        var label = shortLabel(g.items[0]);
+        if (n > 1) label = n + ' reports · newest: ' + label;
+
+        L.marker(pt, { icon: L.divIcon({ className: 'wx-icon', html: html, iconSize: [80, 80], iconAnchor: [40, 40], popupAnchor: [0, -18] }) })
+          .addTo(map)
+          .bindPopup(makePopup(g.items))
+          .bindTooltip(esc(label), { permanent: true, direction: 'right', offset: [34, 0] });
+      });
+      if (points.length) map.fitBounds(points, { padding: [60, 60], maxZoom: 10 });
+    })
+    .catch(function (err) { note.textContent = 'Error: ' + err.message; });
+}
+
+// ---------- owner-only clear button (open the page with #owner on the end) ----------
+if (location.hash === '#owner') {
+  var btn = document.getElementById('clearbtn');
+  btn.style.display = 'block';
+  btn.onclick = function () {
+    var key = prompt('Owner passcode:');
+    if (!key) return;
+    if (!confirm('Move ALL reports off the map into the Archive tab?')) return;
+    btn.disabled = true;
+    btn.textContent = 'Clearing...';
+    fetch(API, { method: 'POST', body: JSON.stringify({ action: 'clear', key: key }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) { alert('Cleared ' + res.moved + ' report(s).'); location.reload(); }
+        else { alert(res.error || 'Could not clear.'); btn.disabled = false; btn.textContent = 'Clear all reports'; }
+      })
+      .catch(function (err) {
+        alert('Error: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Clear all reports';
+      });
+  };
+}
+</script>
+</body>
+</html>
